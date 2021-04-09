@@ -1,0 +1,144 @@
+#%% md
+
+# Feature Extraction and Engineering
+
+
+#%%
+
+import pandas as pd
+import numpy as np
+from matplotlib import pyplot as plt
+from scipy.spatial import distance_matrix,distance
+import random
+import numpy as np
+%matplotlib inline
+
+import warnings
+warnings.filterwarnings('ignore')
+
+#%%
+
+base_df = pd.read_csv("station_df.csv")
+events = pd.read_csv("event_df.csv")[["car","station","event_time"]]
+
+#%%
+
+base_df.head()
+
+#%%
+
+events.head()
+
+
+
+#%%
+
+events["event_time"]=pd.to_datetime(events["event_time"])
+events['time']=events.apply(lambda row:(row['event_time'].hour+(row['event_time'].minute)/60)/24,axis=1)
+
+
+#%%
+
+events['day']= events['event_time'].dt.weekday
+
+
+
+
+#%% md
+
+#### Handling categorical features
+
+
+#%% md
+
+#### Binning
+
+
+
+#%% md
+
+<img src="https://upload.wikimedia.org/wikipedia/commons/e/eb/Decision_Tree.jpg" />
+
+
+
+
+#%%
+
+seconds_in_day = 24*60*60
+seconds_in_week = 7 * seconds_in_day
+
+
+events['time_in_seconds'] = pd.to_datetime(events['event_time']).values.astype(np.int64) // 10**6
+events['day_sin_time'] = np.sin(2*np.pi*events.time_in_seconds/seconds_in_day)
+events['day_cos_time'] = np.cos(2*np.pi*events.time_in_seconds/seconds_in_day)
+events['sin_time_week'] = np.sin(2*np.pi*events.time_in_seconds/seconds_in_week)
+events['cos_time_week'] = np.cos(2*np.pi*events.time_in_seconds/seconds_in_week)
+
+#%% md
+
+#### Aggregate Features
+
+
+#%%
+
+
+counter = events.groupby(["station","event_time"]).count().reset_index()[["station","event_time","car"]].rename(columns={"car":"count"})
+
+#%%
+
+events = events.merge(counter,on = ["station","event_time"])
+
+#%%
+
+
+events.groupby(["station","sin_time_week","cos_time_week"]).agg({"count":["mean","max"]})
+
+#%% md
+
+#### Geospatial data
+
+
+#%% md
+
+##### OPTIONAL: Working with spatial data in python
+
+
+
+#%%
+
+import geopandas as gpd
+import pyproj
+import shapely 
+
+#%%
+
+wgs84p=pyproj.Proj("+init=EPSG:4326")
+UTM36N=pyproj.Proj("+init=EPSG:32636")
+
+df = gpd.GeoDataFrame(base_df)
+df['geometry'] = df.apply(lambda row: shapely.geometry.point.Point(row['latitude'],row['longitude']),axis=1)
+df.crs ={'init':'epsg:4236','no_defs':True}
+df = df.to_crs(epsg='32636')
+df['x'] = df.geometry.x
+df['y'] = df.geometry.y
+
+
+#%%
+
+df['under_500']=[len(i[i<=500])for i in distance_matrix(df[['x','y']],df[['x','y']])]
+df['under_250']=[len(i[i<=250])for i in distance_matrix(df[['x','y']],df[['x','y']])]
+    
+
+
+#%%
+
+means=(df[['longitude','latitude']].drop_duplicates().mean())
+means = (means[0],means[1])
+
+#%%
+
+df['center_distance'] = df.apply(lambda row: distance.euclidean([row['longitude'],row['latitude']],list(means)),axis=1)
+
+#%% md
+
+#### Built in tools for processing and extraction
